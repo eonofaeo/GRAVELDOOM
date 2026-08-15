@@ -83,6 +83,7 @@ src/
 
 ### Implemented
 - Ser Ashgrave multi-phase boss fight
+- Dedicated two-phase Sir Corvain and Bloomwarden encounters with unique attack sets
 - Cindersmithing materials, recipes, shop, upgrade UI, and save persistence
 - Gravebloom Marsh and the connected region data set
 - Ember Arts, Hex casting, NPC dialogue, progressive map reveal, and Bloomstone fast travel
@@ -91,7 +92,5 @@ src/
 - PWA manifest, service-worker registration, and install icons
 
 ### Remaining production work
-- Replace the generic Bloomwarden and Sir Corvain encounters with unique boss movesets, arenas, and art
+- Add broader browser/gamepad playtesting and final balance tuning
 - Replace procedural sprites with final painted assets
-- Add broader automated tests and full browser/gamepad playtesting
-- Expand settings UI for video, audio, control remapping, and color filters

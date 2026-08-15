@@ -38,6 +38,9 @@ export class AudioManager {
   setSFXVolume(v: number): void {
     if (this.sfxGain) this.sfxGain.gain.value = v;
   }
+  setAmbienceVolume(v: number): void {
+    if (this.ambienceGain) this.ambienceGain.gain.value = v;
+  }
 
   /** Synthesize a heavy weapon impact */
   playHeavyHit(): void {

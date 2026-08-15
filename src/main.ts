@@ -25,6 +25,7 @@ import {
 import { PlayerController } from './systems/playerController.js';
 import { EnemyAISystem } from './systems/enemyAI.js';
 import { BossController } from './systems/bossController.js';
+import { UniqueBossController, UniqueBossId } from './systems/uniqueBossController.js';
 import { AnimationSystem, HUDRenderer } from './systems/rendering.js';
 import { SaveManager, SaveData } from './systems/saveSystem.js';
 import { EmberArtSystem, EMBER_ARTS, WEAPON_DEFAULT_ARTS } from './systems/emberArts.js';
@@ -71,6 +72,7 @@ class Gravebloom {
   private frostWidow: FrostWidowInstance | null = null;
   private hollowKing: HollowKingInstance | null = null;
   private unspokenTwin: UnspokenTwinInstance | null = null;
+  private uniqueBossController: UniqueBossController | null = null;
 
   // Entities
   private player: Entity | null = null;
@@ -404,6 +406,20 @@ class Gravebloom {
       }
     }
 
+    if (this.uniqueBossController) {
+      this.uniqueBossController.update(dt, playerPos);
+      const bossHit = this.uniqueBossController.checkHit(playerPos);
+      if (bossHit) {
+        this.playerController!.takeDamage(bossHit.damage, bossHit.direction, true);
+        this.hudRenderer.triggerDamageFlash();
+        this.shakeCamera(10, 0.25);
+      }
+      if ((this.uniqueBossController.entity as any)._bossDefeated) {
+        delete (this.uniqueBossController.entity as any)._bossDefeated;
+        this.onBossDefeated(this.uniqueBossController.bossId);
+      }
+    }
+
     // Cinder Choir
     if (this.cinderChoir) {
       updateCinderChoir(this.cinderChoir, dt, playerPos, this.particles);
@@ -558,6 +574,9 @@ class Gravebloom {
     if (this.input.isPressed(InputAction.MoveDown))  { this.settingsSelection = Math.min(7, this.settingsSelection + 1); }
 
     const acc = this.settingsManager.getAccessibility();
+    const video = this.settingsManager.getVideo();
+    const audio = this.settingsManager.getAudio();
+    const controls = this.settingsManager.get().controls;
     if (this.input.isPressed(InputAction.Interact)) {
       const tab = tabs[this.settingsTab];
       if (tab === 'accessibility') {
@@ -574,13 +593,42 @@ class Gravebloom {
             break;
           }
         }
+      } else if (tab === 'video') {
+        switch (this.settingsSelection) {
+          case 0: this.settingsManager.updateVideo({ screenShakeToggle: !video.screenShakeToggle }); break;
+          case 1: this.settingsManager.updateVideo({ motionBlurToggle: !video.motionBlurToggle }); break;
+          case 2: this.settingsManager.updateVideo({ brightness: video.brightness >= 1.5 ? 0.5 : video.brightness + 0.1 }); break;
+          case 3: this.settingsManager.updateVideo({ gamma: video.gamma >= 1.5 ? 0.5 : video.gamma + 0.1 }); break;
+        }
+      } else if (tab === 'audio') {
+        switch (this.settingsSelection) {
+          case 0: this.settingsManager.updateAudio({ masterVolume: audio.masterVolume >= 1 ? 0 : audio.masterVolume + 0.1 }); break;
+          case 1: this.settingsManager.updateAudio({ musicVolume: audio.musicVolume >= 1 ? 0 : audio.musicVolume + 0.1 }); break;
+          case 2: this.settingsManager.updateAudio({ sfxVolume: audio.sfxVolume >= 1 ? 0 : audio.sfxVolume + 0.1 }); break;
+          case 3: this.settingsManager.updateAudio({ ambienceVolume: audio.ambienceVolume >= 1 ? 0 : audio.ambienceVolume + 0.1 }); break;
+        }
+      } else if (tab === 'controls') {
+        switch (this.settingsSelection) {
+          case 0: this.settingsManager.updateControls({ stickDeadzone: controls.stickDeadzone >= 0.5 ? 0.1 : controls.stickDeadzone + 0.1 }); break;
+          case 1: this.settingsManager.updateControls({ promptStyle: controls.promptStyle === 'auto' ? 'keyboard' : controls.promptStyle === 'keyboard' ? 'gamepad' : 'auto' }); break;
+          case 2: this.settingsManager.updateControls({ mouseSensitivity: controls.mouseSensitivity >= 2 ? 0.5 : controls.mouseSensitivity + 0.25 }); break;
+        }
       }
+      this.applyAudioSettings();
       this.audio.playUISelect();
     }
 
     if (this.input.isPressed(InputAction.Pause)) {
       this.currentScene = 'title'; this.sceneTransitionTimer = 0;
     }
+  }
+
+  private applyAudioSettings(): void {
+    const audio = this.settingsManager.getAudio();
+    this.audio.setMasterVolume(audio.masterVolume);
+    this.audio.setMusicVolume(audio.musicVolume);
+    this.audio.setSFXVolume(audio.sfxVolume);
+    this.audio.setAmbienceVolume(audio.ambienceVolume);
   }
 
   // ─── Dialogue ─────────────────────────────────────────────
@@ -749,6 +797,7 @@ class Gravebloom {
     this.enemyAI.clear();
     this.enemies = [];
     this.bossController = null;
+    this.uniqueBossController = null;
     this.cinderChoir = null; this.rootMother = null; this.vaelith = null;
     this.frostWidow = null; this.hollowKing = null; this.unspokenTwin = null;
     this.loadGameplay();
@@ -1245,13 +1294,31 @@ class Gravebloom {
     }
 
     const acc = this.settingsManager.getAccessibility();
-    const items = [
+    const video = this.settingsManager.getVideo();
+    const audio = this.settingsManager.getAudio();
+    const controls = this.settingsManager.get().controls;
+    const tab = ['accessibility', 'video', 'audio', 'controls'][this.settingsTab];
+    const items = tab === 'accessibility' ? [
       `Extended Parry Window: ${acc.extendedParryWindow ? 'ON' : 'OFF'}`,
       `Extended I-Frames: ${acc.extendedIFrameWindow ? 'ON' : 'OFF'}`,
       `Unlimited Stamina: ${acc.unlimitedStamina ? 'ON' : 'OFF'}`,
       `Reduce Flashing: ${acc.flashingLightsReduction ? 'ON' : 'OFF'}`,
       `Reduce Screen Shake: ${acc.screenShakeReduction > 0 ? 'ON' : 'OFF'}`,
       `Colorblind Mode: ${acc.colorblindMode}`,
+    ] : tab === 'video' ? [
+      `Screen Shake: ${video.screenShakeToggle ? 'ON' : 'OFF'}`,
+      `Motion Blur: ${video.motionBlurToggle ? 'ON' : 'OFF'}`,
+      `Brightness: ${video.brightness.toFixed(1)}`,
+      `Gamma: ${video.gamma.toFixed(1)}`,
+    ] : tab === 'audio' ? [
+      `Master Volume: ${Math.round(audio.masterVolume * 100)}%`,
+      `Music Volume: ${Math.round(audio.musicVolume * 100)}%`,
+      `SFX Volume: ${Math.round(audio.sfxVolume * 100)}%`,
+      `Ambience Volume: ${Math.round(audio.ambienceVolume * 100)}%`,
+    ] : [
+      `Stick Deadzone: ${controls.stickDeadzone.toFixed(1)}`,
+      `Prompt Style: ${controls.promptStyle}`,
+      `Mouse Sensitivity: ${controls.mouseSensitivity.toFixed(2)}`,
     ];
     for (let i = 0; i < items.length; i++) {
       const sel = i === this.settingsSelection;
@@ -1364,6 +1431,7 @@ class Gravebloom {
     if (this.frostWidow) this.allEntities.push(this.frostWidow.entity);
     if (this.hollowKing) this.allEntities.push(this.hollowKing.entity);
     if (this.unspokenTwin) this.allEntities.push(this.unspokenTwin.entity);
+    if (this.uniqueBossController) this.allEntities.push(this.uniqueBossController.entity);
 
     // Camera
     const playerTransform = getComponent<TransformComponent>(this.player, 'transform')!;
@@ -1401,6 +1469,7 @@ class Gravebloom {
         addComponent(entity, createLoot(ENEMIES.ser_ashgrave.ashReward));
         addComponent(entity, createName('Ser Ashgrave', 'The Herald Undone'));
         this.bossController = new BossController(entity, this.particles, this.audio);
+        this.bossController.activate();
         break;
       }
       case 'cinder_choir':
@@ -1422,22 +1491,24 @@ class Gravebloom {
         this.unspokenTwin = createUnspokenTwin(this.particles);
         break;
       case 'bloomwarden':
-      case 'sir_corvain':
-        // Generic boss using Ashgrave controller pattern
-        const data = ENEMIES[bossId === 'sir_corvain' ? 'ashguard_sentinel' : 'ser_ashgrave'];
+      case 'sir_corvain': {
+        const isCorvain = bossId === 'sir_corvain';
+        const data = isCorvain ? ENEMIES.ashguard_sentinel : ENEMIES.ser_ashgrave;
         const entity = createEntity(['boss', 'enemy', bossId]);
         addComponent(entity, createTransform(this.currentRegion.bossPosition!));
-        addComponent(entity, createVelocity(70, 8));
-        addComponent(entity, createCollider(50, 70, 2, 0b11101));
-        addComponent(entity, createHealth(data.baseHP));
-        addComponent(entity, createPoise(data.poise));
+        addComponent(entity, createVelocity(isCorvain ? 65 : 45, 8));
+        addComponent(entity, createCollider(isCorvain ? 46 : 62, isCorvain ? 68 : 88, 2, 0b11101));
+        addComponent(entity, createHealth(isCorvain ? 900 : 1400));
+        addComponent(entity, createPoise(isCorvain ? 75 : 90));
         addComponent(entity, createCombatState());
-        addComponent(entity, createSprite('wretch', 60, 80));
+        addComponent(entity, createSprite(isCorvain ? 'wretch' : 'ashgrave', isCorvain ? 60 : 82, isCorvain ? 80 : 100));
         addComponent(entity, createFaction('enemy'));
         addComponent(entity, createLoot(data.ashReward));
-        addComponent(entity, createName(data.name, data.epithet));
-        this.bossController = new BossController(entity, this.particles, this.audio);
+        addComponent(entity, createName(isCorvain ? 'Sir Corvain' : 'The Bloomwarden', isCorvain ? 'The Last Vigil' : 'Queen of Roots'));
+        this.uniqueBossController = new UniqueBossController(entity, this.particles, this.audio, bossId as UniqueBossId);
+        this.uniqueBossController.activate();
         break;
+      }
     }
   }
 

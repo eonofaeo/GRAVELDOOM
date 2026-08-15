@@ -133,6 +133,11 @@ export class SettingsManager {
     this.save();
   }
 
+  updateGame(partial: Partial<GameSettings>): void {
+    Object.assign(this.settings.game, partial);
+    this.save();
+  }
+
   updateControls(partial: Partial<ControlSettings>): void {
     Object.assign(this.settings.controls, partial);
     this.save();
