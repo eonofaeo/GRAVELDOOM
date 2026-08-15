@@ -8,6 +8,7 @@ import { ParticleSystem, ParticlePresets } from './engine/particles.js';
 import { AudioManager } from './engine/audio.js';
 import { SpriteGenerator, UIGenerator } from './engine/sprites.js';
 import { MusicSystem } from './engine/music.js';
+import { AssetManager } from './engine/assets.js';
 import {
   createEntity, addComponent, getComponent, Entity,
   createTransform, createVelocity, createCollider, createHealth, createStamina,
@@ -51,6 +52,7 @@ class Gravebloom {
   private particles: ParticleSystem;
   private audio: AudioManager;
   private camera: Camera;
+  private assets: AssetManager;
 
   // Systems
   private animationSystem: AnimationSystem;
@@ -100,6 +102,10 @@ class Gravebloom {
   private weaponArtAssignments: Record<string, string> = {};  // weaponId -> artId
   private interactionLabel = '';
 
+  // ─── Death Loop & Ash Recovery ─────────────────────────────
+  private droppedAsh = 0;
+  private droppedAshPos: { region: string; x: number; y: number } | null = null;
+
   // ─── Sub-menu UI state (attune / shop / smithing) ──────────
   private attuneSelection = 0;
   private shopSelection = 0;
@@ -124,6 +130,7 @@ class Gravebloom {
     this.input = new InputManager(canvas);
     this.particles = new ParticleSystem();
     this.audio = new AudioManager();
+    this.assets = new AssetManager();
     this.animationSystem = new AnimationSystem();
     this.hudRenderer = new HUDRenderer();
     this.saveManager = new SaveManager();
@@ -156,7 +163,7 @@ class Gravebloom {
       (alpha) => this.render(alpha),
     );
 
-    // Init audio + music on first interaction
+    // Init audio + music on first touch/interaction
     const initAudio = () => {
       this.audio.init();
       this.audio.startAmbience();
@@ -166,11 +173,15 @@ class Gravebloom {
         this.musicSystem.init(audioCtx, masterGain);
         this.musicSystem.start();
       }
-      document.removeEventListener('click', initAudio);
-      document.removeEventListener('keydown', initAudio);
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('keydown', initAudio);
+      window.removeEventListener('touchstart', initAudio);
+      window.removeEventListener('pointerdown', initAudio);
     };
-    document.addEventListener('click', initAudio);
-    document.addEventListener('keydown', initAudio);
+    window.addEventListener('click', initAudio);
+    window.addEventListener('keydown', initAudio);
+    window.addEventListener('touchstart', initAudio);
+    window.addEventListener('pointerdown', initAudio);
   }
 
   start(): void { this.loop.start(); }
@@ -180,6 +191,7 @@ class Gravebloom {
   // ═══════════════════════════════════════════════════════════════
 
   private update(dt: number): void {
+    this.input.updateTouchLayout(this.renderer.w, this.renderer.h);
     this.input.pollGamepad();
     this.particles.update(dt);
     this.hudRenderer.update(dt);
@@ -205,6 +217,27 @@ class Gravebloom {
   // ─── Title ────────────────────────────────────────────────
 
   private updateTitle(dt: number): void {
+    const W = this.renderer.w;
+    const H = this.renderer.h;
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      const my = H * 0.55;
+      for (let i = 0; i < 4; i++) {
+        const y = my + i * 24;
+        if (click.x >= W / 2 - 120 && click.x <= W / 2 + 120 && click.y >= y - 10 && click.y <= y + 16) {
+          this.titleSelection = i;
+          this.audio.playUISelect();
+          if (i === 0 || i === 1) {
+            this.currentScene = 'vigil_select'; this.sceneTransitionTimer = 0;
+          } else if (i === 2) {
+            this.currentScene = 'settings'; this.sceneTransitionTimer = 0;
+          }
+          return;
+        }
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveUp))   { this.titleSelection = Math.max(0, this.titleSelection - 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.MoveDown)) { this.titleSelection = Math.min(3, this.titleSelection + 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack)) {
@@ -225,6 +258,38 @@ class Gravebloom {
   // ─── Vigil Select ─────────────────────────────────────────
 
   private updateVigilSelect(dt: number): void {
+    const W = this.renderer.w;
+    const H = this.renderer.h;
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      const cardW = 160, cardH = 120, cardGap = 20;
+      const startX = (W - (cardW * 3 + cardGap * 2)) / 2;
+      const cardY = H * 0.3;
+      for (let i = 0; i < 3; i++) {
+        const x = startX + i * (cardW + cardGap);
+        if (click.x >= x && click.x <= x + cardW && click.y >= cardY && click.y <= cardY + cardH) {
+          this.vigilSelection = i;
+          const vigils = this.saveManager.getVigils();
+          const selected = vigils[i];
+          this.currentSaveSlot = i;
+          if (selected.isEmpty) {
+            this.currentScene = 'character_create'; this.sceneTransitionTimer = 0;
+          } else {
+            this.currentSave = selected.data!;
+            this.loadGameplay();
+          }
+          this.audio.playUISelect();
+          return;
+        }
+      }
+      if (click.y > H - 50) {
+        this.currentScene = 'title'; this.sceneTransitionTimer = 0;
+        this.audio.playUISelect();
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveLeft))  { this.vigilSelection = Math.max(0, this.vigilSelection - 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.MoveRight)) { this.vigilSelection = Math.min(2, this.vigilSelection + 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack)) {
@@ -246,6 +311,35 @@ class Gravebloom {
   // ─── Character Create ─────────────────────────────────────
 
   private updateCharacterCreate(dt: number): void {
+    const W = this.renderer.w;
+    const H = this.renderer.h;
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      for (let i = 0; i < ORIGINS.length; i++) {
+        const y = 60 + i * 28;
+        if (click.x >= 40 && click.x <= 340 && click.y >= y - 4 && click.y <= y + 24) {
+          this.originSelection = i;
+          this.audio.playUISelect();
+          break;
+        }
+      }
+      // Confirm button click
+      if (click.x >= W / 2 - 100 && click.x <= W / 2 + 100 && click.y >= H - 45) {
+        const origin = ORIGINS[this.originSelection];
+        this.currentSave = this.saveManager.createSave(this.currentSaveSlot, origin.id, 'The Unspoken');
+        this.loadGameplay();
+        this.audio.playUISelect();
+        return;
+      }
+      // Back button click (top left)
+      if (click.x <= 100 && click.y <= 50) {
+        this.currentScene = 'vigil_select'; this.sceneTransitionTimer = 0;
+        this.audio.playUISelect();
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveUp))   { this.originSelection = Math.max(0, this.originSelection - 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.MoveDown)) { this.originSelection = Math.min(ORIGINS.length - 1, this.originSelection + 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack)) {
@@ -262,9 +356,10 @@ class Gravebloom {
   private updateGameplay(dt: number): void {
     if (!this.player || !this.playerController || !this.currentSave) return;
 
-    // Map toggle (M key or E+Up)
-    if (this.input.isPressed(InputAction.Interact) && this.input.isDown(InputAction.MoveUp)) {
+    // Map toggle (M key, Tab, touch button, or E+Up)
+    if (this.input.isPressed(InputAction.MapToggle) || (this.input.isPressed(InputAction.Interact) && this.input.isDown(InputAction.MoveUp))) {
       this.mapSystem.toggle();
+      this.audio.playUISelect();
     }
     if (this.mapSystem.getIsOpen()) {
       const move = this.input.getMovement();
@@ -302,6 +397,16 @@ class Gravebloom {
     // Check player death
     const playerHealth = getComponent<HealthComponent>(this.player, 'health')!;
     if (playerHealth.current <= 0 && this.currentScene === 'gameplay') {
+      const pTransform = getComponent<TransformComponent>(this.player, 'transform')!;
+      if (this.playerController.getState().ash > 0) {
+        this.droppedAsh = this.playerController.getState().ash;
+        this.droppedAshPos = {
+          region: this.currentRegion?.id ?? 'ashenCoast',
+          x: pTransform.position.x,
+          y: pTransform.position.y,
+        };
+        this.playerController.setAsh(0);
+      }
       this.currentScene = 'death';
       this.deathTimer = 0;
       this.hudRenderer.showDeathOverlay();
@@ -520,7 +625,8 @@ class Gravebloom {
   private updateDeath(dt: number): void {
     this.deathTimer += dt;
     this.particles.update(dt);
-    if (this.deathTimer > 4 && (this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack))) {
+    const click = this.input.getPointerClick();
+    if (this.deathTimer > 2.5 && (click || this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack))) {
       this.respawnPlayer();
     }
   }
@@ -540,6 +646,8 @@ class Gravebloom {
     ember.current = ember.max;
     combat.state = 'idle'; combat.canAct = true; combat.isAttacking = false;
     velocity.velocity = Vec2.ZERO;
+    this.playerController.refillFlask();
+
     if (this.lastBloomstone && this.lastBloomstone.region !== this.currentRegion?.id) {
       this.transitionToRegion(this.lastBloomstone.region, Vec2.of(this.lastBloomstone.x, this.lastBloomstone.y));
       return;
@@ -548,7 +656,6 @@ class Gravebloom {
       ? Vec2.of(this.lastBloomstone.x, this.lastBloomstone.y)
       : Vec2.of(200, 300);
 
-    this.playerController.getState().ash = Math.floor(this.playerController.getState().ash * 0.5);
     this.currentScene = 'gameplay';
     this.deathTimer = 0;
     this.hudRenderer.clearDeathOverlay();
@@ -558,6 +665,27 @@ class Gravebloom {
   // ─── Paused ─────────────────────────────────��─────────────
 
   private updatePaused(dt: number): void {
+    const W = this.renderer.w;
+    const H = this.renderer.h;
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      // Resume or Quit tap
+      if (click.y >= H / 2 - 50 && click.y <= H / 2 - 10) {
+        this.currentScene = 'gameplay';
+        this.sceneTransitionTimer = 0;
+        this.audio.playUISelect();
+        return;
+      } else if (click.y >= H / 2 && click.y <= H / 2 + 50) {
+        this.saveCurrentGame();
+        this.currentScene = 'title';
+        this.sceneTransitionTimer = 0;
+        this.musicSystem.stop();
+        this.audio.playUISelect();
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.Pause)) { this.currentScene = 'gameplay'; this.sceneTransitionTimer = 0; }
     if (this.input.isPressed(InputAction.Interact)) {
       this.saveCurrentGame();
@@ -570,59 +698,95 @@ class Gravebloom {
 
   private updateSettings(dt: number): void {
     const tabs = ['accessibility', 'video', 'audio', 'controls'];
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      // Tab clicks
+      for (let i = 0; i < tabs.length; i++) {
+        const tabX = 60 + i * 120;
+        if (click.x >= tabX - 10 && click.x <= tabX + 110 && click.y >= 50 && click.y <= 75) {
+          this.settingsTab = i;
+          this.audio.playUISelect();
+          return;
+        }
+      }
+      // Item clicks
+      for (let i = 0; i < 7; i++) {
+        const y = 88 + i * 24;
+        if (click.x >= 55 && click.x <= 460 && click.y >= y && click.y <= y + 24) {
+          this.settingsSelection = i;
+          this.triggerSettingToggle();
+          return;
+        }
+      }
+      // Back button click
+      if (click.y > this.renderer.h - 50) {
+        this.currentScene = 'title';
+        this.sceneTransitionTimer = 0;
+        this.audio.playUISelect();
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveLeft))  { this.settingsTab = Math.max(0, this.settingsTab - 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.MoveRight)) { this.settingsTab = Math.min(tabs.length - 1, this.settingsTab + 1); this.audio.playUISelect(); }
     if (this.input.isPressed(InputAction.MoveUp))    { this.settingsSelection = Math.max(0, this.settingsSelection - 1); }
     if (this.input.isPressed(InputAction.MoveDown))  { this.settingsSelection = Math.min(7, this.settingsSelection + 1); }
 
-    const acc = this.settingsManager.getAccessibility();
-    const video = this.settingsManager.getVideo();
-    const audio = this.settingsManager.getAudio();
-    const controls = this.settingsManager.get().controls;
     if (this.input.isPressed(InputAction.Interact)) {
-      const tab = tabs[this.settingsTab];
-      if (tab === 'accessibility') {
-        switch (this.settingsSelection) {
-          case 0: this.settingsManager.updateAccessibility({ extendedParryWindow: !acc.extendedParryWindow }); break;
-          case 1: this.settingsManager.updateAccessibility({ extendedIFrameWindow: !acc.extendedIFrameWindow }); break;
-          case 2: this.settingsManager.updateAccessibility({ unlimitedStamina: !acc.unlimitedStamina }); break;
-          case 3: this.settingsManager.updateAccessibility({ flashingLightsReduction: !acc.flashingLightsReduction }); break;
-          case 4: this.settingsManager.updateAccessibility({ screenShakeReduction: acc.screenShakeReduction > 0 ? 0 : 0.7 }); break;
-          case 5: {
-            const modes: ('none' | 'protanopia' | 'deuteranopia' | 'tritanopia')[] = ['none', 'protanopia', 'deuteranopia', 'tritanopia'];
-            const idx = modes.indexOf(acc.colorblindMode);
-            this.settingsManager.updateAccessibility({ colorblindMode: modes[(idx + 1) % modes.length] });
-            break;
-          }
-        }
-      } else if (tab === 'video') {
-        switch (this.settingsSelection) {
-          case 0: this.settingsManager.updateVideo({ screenShakeToggle: !video.screenShakeToggle }); break;
-          case 1: this.settingsManager.updateVideo({ motionBlurToggle: !video.motionBlurToggle }); break;
-          case 2: this.settingsManager.updateVideo({ brightness: video.brightness >= 1.5 ? 0.5 : video.brightness + 0.1 }); break;
-          case 3: this.settingsManager.updateVideo({ gamma: video.gamma >= 1.5 ? 0.5 : video.gamma + 0.1 }); break;
-        }
-      } else if (tab === 'audio') {
-        switch (this.settingsSelection) {
-          case 0: this.settingsManager.updateAudio({ masterVolume: audio.masterVolume >= 1 ? 0 : audio.masterVolume + 0.1 }); break;
-          case 1: this.settingsManager.updateAudio({ musicVolume: audio.musicVolume >= 1 ? 0 : audio.musicVolume + 0.1 }); break;
-          case 2: this.settingsManager.updateAudio({ sfxVolume: audio.sfxVolume >= 1 ? 0 : audio.sfxVolume + 0.1 }); break;
-          case 3: this.settingsManager.updateAudio({ ambienceVolume: audio.ambienceVolume >= 1 ? 0 : audio.ambienceVolume + 0.1 }); break;
-        }
-      } else if (tab === 'controls') {
-        switch (this.settingsSelection) {
-          case 0: this.settingsManager.updateControls({ stickDeadzone: controls.stickDeadzone >= 0.5 ? 0.1 : controls.stickDeadzone + 0.1 }); break;
-          case 1: this.settingsManager.updateControls({ promptStyle: controls.promptStyle === 'auto' ? 'keyboard' : controls.promptStyle === 'keyboard' ? 'gamepad' : 'auto' }); break;
-          case 2: this.settingsManager.updateControls({ mouseSensitivity: controls.mouseSensitivity >= 2 ? 0.5 : controls.mouseSensitivity + 0.25 }); break;
-        }
-      }
-      this.applyAudioSettings();
-      this.audio.playUISelect();
+      this.triggerSettingToggle();
     }
 
     if (this.input.isPressed(InputAction.Pause)) {
       this.currentScene = 'title'; this.sceneTransitionTimer = 0;
     }
+  }
+
+  private triggerSettingToggle(): void {
+    const tabs = ['accessibility', 'video', 'audio', 'controls'];
+    const tab = tabs[this.settingsTab];
+    const acc = this.settingsManager.getAccessibility();
+    const video = this.settingsManager.getVideo();
+    const audio = this.settingsManager.getAudio();
+    const controls = this.settingsManager.get().controls;
+
+    if (tab === 'accessibility') {
+      switch (this.settingsSelection) {
+        case 0: this.settingsManager.updateAccessibility({ extendedParryWindow: !acc.extendedParryWindow }); break;
+        case 1: this.settingsManager.updateAccessibility({ extendedIFrameWindow: !acc.extendedIFrameWindow }); break;
+        case 2: this.settingsManager.updateAccessibility({ unlimitedStamina: !acc.unlimitedStamina }); break;
+        case 3: this.settingsManager.updateAccessibility({ flashingLightsReduction: !acc.flashingLightsReduction }); break;
+        case 4: this.settingsManager.updateAccessibility({ screenShakeReduction: acc.screenShakeReduction > 0 ? 0 : 0.7 }); break;
+        case 5: {
+          const modes: ('none' | 'protanopia' | 'deuteranopia' | 'tritanopia')[] = ['none', 'protanopia', 'deuteranopia', 'tritanopia'];
+          const idx = modes.indexOf(acc.colorblindMode);
+          this.settingsManager.updateAccessibility({ colorblindMode: modes[(idx + 1) % modes.length] });
+          break;
+        }
+      }
+    } else if (tab === 'video') {
+      switch (this.settingsSelection) {
+        case 0: this.settingsManager.updateVideo({ screenShakeToggle: !video.screenShakeToggle }); break;
+        case 1: this.settingsManager.updateVideo({ motionBlurToggle: !video.motionBlurToggle }); break;
+        case 2: this.settingsManager.updateVideo({ brightness: video.brightness >= 1.5 ? 0.5 : video.brightness + 0.1 }); break;
+        case 3: this.settingsManager.updateVideo({ gamma: video.gamma >= 1.5 ? 0.5 : video.gamma + 0.1 }); break;
+      }
+    } else if (tab === 'audio') {
+      switch (this.settingsSelection) {
+        case 0: this.settingsManager.updateAudio({ masterVolume: audio.masterVolume >= 1 ? 0 : audio.masterVolume + 0.1 }); break;
+        case 1: this.settingsManager.updateAudio({ musicVolume: audio.musicVolume >= 1 ? 0 : audio.musicVolume + 0.1 }); break;
+        case 2: this.settingsManager.updateAudio({ sfxVolume: audio.sfxVolume >= 1 ? 0 : audio.sfxVolume + 0.1 }); break;
+        case 3: this.settingsManager.updateAudio({ ambienceVolume: audio.ambienceVolume >= 1 ? 0 : audio.ambienceVolume + 0.1 }); break;
+      }
+    } else if (tab === 'controls') {
+      switch (this.settingsSelection) {
+        case 0: this.settingsManager.updateControls({ stickDeadzone: controls.stickDeadzone >= 0.5 ? 0.1 : controls.stickDeadzone + 0.1 }); break;
+        case 1: this.settingsManager.updateControls({ promptStyle: controls.promptStyle === 'auto' ? 'keyboard' : controls.promptStyle === 'keyboard' ? 'gamepad' : 'auto' }); break;
+        case 2: this.settingsManager.updateControls({ mouseSensitivity: controls.mouseSensitivity >= 2 ? 0.5 : controls.mouseSensitivity + 0.25 }); break;
+      }
+    }
+    this.applyAudioSettings();
+    this.audio.playUISelect();
   }
 
   private applyAudioSettings(): void {
@@ -637,9 +801,10 @@ class Gravebloom {
 
   private updateDialogue(dt: number): void {
     this.dialogueActionTimer += dt;
-    if (this.dialogueActionTimer < 0.3) return; // debounce
+    if (this.dialogueActionTimer < 0.3) return;
 
-    if (this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack)) {
+    const click = this.input.getPointerClick();
+    if (click || this.input.isPressed(InputAction.Interact) || this.input.isPressed(InputAction.LightAttack)) {
       const result = this.dialogueManager.advance();
       this.audio.playUISelect();
 
@@ -676,22 +841,49 @@ class Gravebloom {
   private updateAttune(_dt: number): void {
     if (!this.currentSave) return;
     const attributes = Object.keys(this.currentSave.attributes);
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      const H = this.renderer.h;
+      for (let i = 0; i < attributes.length; i++) {
+        const y = H * 0.32 + i * 32;
+        if (click.y >= y - 10 && click.y <= y + 22) {
+          this.attuneSelection = i;
+          this.attuneSelectedAttribute();
+          return;
+        }
+      }
+      if (click.y > H * 0.78) {
+        this.currentScene = 'gameplay';
+        this.dialogueManager.endDialogue();
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveUp)) this.attuneSelection = Math.max(0, this.attuneSelection - 1);
     if (this.input.isPressed(InputAction.MoveDown)) this.attuneSelection = Math.min(attributes.length - 1, this.attuneSelection + 1);
     if (this.input.isPressed(InputAction.Interact)) {
-      const cost = attuneCost(this.currentSave.level);
-      if (this.playerController && this.playerController.getState().ash >= cost) {
-        this.playerController.setAsh(this.playerController.getState().ash - cost);
-        const attribute = attributes[this.attuneSelection];
-        this.currentSave.attributes[attribute] = (this.currentSave.attributes[attribute] ?? 0) + 1;
-        this.currentSave.level += 1;
-        this.saveCurrentGame();
-      }
-      this.audio.playUISelect();
+      this.attuneSelectedAttribute();
     }
     if (this.input.isPressed(InputAction.Pause)) {
       this.currentScene = 'gameplay';
       this.dialogueManager.endDialogue();
+    }
+  }
+
+  private attuneSelectedAttribute(): void {
+    if (!this.currentSave) return;
+    const attributes = Object.keys(this.currentSave.attributes);
+    const cost = attuneCost(this.currentSave.level);
+    if (this.playerController && this.playerController.getState().ash >= cost) {
+      this.playerController.setAsh(this.playerController.getState().ash - cost);
+      const attribute = attributes[this.attuneSelection];
+      this.currentSave.attributes[attribute] = (this.currentSave.attributes[attribute] ?? 0) + 1;
+      this.currentSave.level += 1;
+      this.saveCurrentGame();
+      this.audio.playBloomstone();
+    } else {
+      this.audio.playUISelect();
     }
   }
 
@@ -702,38 +894,88 @@ class Gravebloom {
       { id: 'cindersteel', name: 'Cindersteel', cost: 150 },
       { id: 'marshstone', name: 'Marshstone', cost: 300 },
     ];
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      const H = this.renderer.h;
+      for (let i = 0; i < shopItems.length; i++) {
+        const y = H * 0.32 + i * 32;
+        if (click.y >= y - 10 && click.y <= y + 22) {
+          this.shopSelection = i;
+          this.purchaseShopItem();
+          return;
+        }
+      }
+      if (click.y > H * 0.78) {
+        this.currentScene = 'gameplay';
+        return;
+      }
+    }
+
     if (this.input.isPressed(InputAction.MoveUp)) this.shopSelection = Math.max(0, this.shopSelection - 1);
     if (this.input.isPressed(InputAction.MoveDown)) this.shopSelection = Math.min(shopItems.length - 1, this.shopSelection + 1);
     if (this.input.isPressed(InputAction.Interact)) {
-      const item = shopItems[this.shopSelection];
-      if (this.playerController.getState().ash >= item.cost) {
-        this.playerController.setAsh(this.playerController.getState().ash - item.cost);
-        this.cindersmithing.addMaterial(item.id, 1);
-        this.saveCurrentGame();
-      }
-      this.audio.playUISelect();
+      this.purchaseShopItem();
     }
     if (this.input.isPressed(InputAction.Pause)) this.currentScene = 'gameplay';
   }
 
+  private purchaseShopItem(): void {
+    if (!this.playerController) return;
+    const shopItems = [
+      { id: 'ashen_ore', name: 'Ashen Ore', cost: 50 },
+      { id: 'cindersteel', name: 'Cindersteel', cost: 150 },
+      { id: 'marshstone', name: 'Marshstone', cost: 300 },
+    ];
+    const item = shopItems[this.shopSelection];
+    if (this.playerController.getState().ash >= item.cost) {
+      this.playerController.setAsh(this.playerController.getState().ash - item.cost);
+      this.cindersmithing.addMaterial(item.id, 1);
+      this.saveCurrentGame();
+      this.audio.playAshReclaim();
+    } else {
+      this.audio.playUISelect();
+    }
+  }
+
   private updateSmithing(_dt: number): void {
+    if (!this.playerController) return;
+    const click = this.input.getPointerClick();
+
+    if (click) {
+      const H = this.renderer.h;
+      if (click.y >= H * 0.32 && click.y <= H * 0.65) {
+        this.performSmithingUpgrade();
+        return;
+      }
+      if (click.y > H * 0.78) {
+        this.currentScene = 'gameplay';
+        return;
+      }
+    }
+
+    if (this.input.isPressed(InputAction.Interact)) {
+      this.performSmithingUpgrade();
+    }
+    if (this.input.isPressed(InputAction.Pause)) this.currentScene = 'gameplay';
+  }
+
+  private performSmithingUpgrade(): void {
     if (!this.playerController) return;
     const weaponId = this.playerController.getState().weaponId;
     const state = { weaponId, level: this.weaponUpgradeLevels[weaponId] ?? 0, emberArtId: this.weaponArtAssignments[weaponId] ?? null };
     const check = this.cindersmithing.canUpgrade(state, this.playerController.getState().ash);
-    if (this.input.isPressed(InputAction.Interact)) {
-      const result = this.cindersmithing.upgrade(state, this.playerController.getState().ash);
-      if (result) {
-        this.weaponUpgradeLevels[weaponId] = result.newState.level;
-        this.playerController.setAsh(this.playerController.getState().ash - result.ashCost);
-        this.smithStatus = `Weapon upgraded to +${result.newState.level}`;
-        this.saveCurrentGame();
-      } else {
-        this.smithStatus = check.reason;
-      }
+    const result = this.cindersmithing.upgrade(state, this.playerController.getState().ash);
+    if (result) {
+      this.weaponUpgradeLevels[weaponId] = result.newState.level;
+      this.playerController.setAsh(this.playerController.getState().ash - result.ashCost);
+      this.smithStatus = `Weapon upgraded to +${result.newState.level}`;
+      this.saveCurrentGame();
+      this.audio.playParry();
+    } else {
+      this.smithStatus = check.reason;
       this.audio.playUISelect();
     }
-    if (this.input.isPressed(InputAction.Pause)) this.currentScene = 'gameplay';
   }
 
   private processPlayerAttackHits(): void {
@@ -764,22 +1006,75 @@ class Gravebloom {
   }
 
   private checkWorldInteractions(position: Vec2): void {
-    if (!this.currentRegion || !this.currentSave) return;
+    if (!this.currentRegion || !this.currentSave || !this.playerController) return;
     if (this.interactionCooldown > 0) {
       this.interactionCooldown -= 1 / 60;
       return;
     }
+
+    // 1. Ashlight reclamation
+    if (this.droppedAshPos && this.droppedAshPos.region === this.currentRegion.id && this.droppedAsh > 0) {
+      if (position.distanceTo(Vec2.of(this.droppedAshPos.x, this.droppedAshPos.y)) < 65) {
+        this.playerController.addAsh(this.droppedAsh);
+        this.audio.playAshReclaim();
+        this.particles.emit(ParticlePresets.parrySpark(position));
+        this.hudRenderer.showBossBanner('ASHLIGHT RETRIEVED', `Reclaimed ${this.droppedAsh.toLocaleString()} Lost Ash`, 3);
+        this.droppedAsh = 0;
+        this.droppedAshPos = null;
+        this.saveCurrentGame();
+      }
+    }
+
+    // 2. Bloomstones
     for (const stone of this.currentRegion.bloomstones) {
       if (position.distanceTo(Vec2.of(stone.x, stone.y)) < 70) {
+        this.playerController.refillFlask();
         const pinId = this.mapSystem.getBloomstonePinId(this.currentRegion.id) ?? stone.id;
         this.mapSystem.discoverPin(pinId);
         this.mapSystem.visitPin(pinId);
         this.currentSave.bloomstonesDiscovered = [...new Set([...this.currentSave.bloomstonesDiscovered, stone.id])];
         this.lastBloomstone = { region: this.currentRegion.id, x: stone.x, y: stone.y };
-        this.interactionCooldown = 1;
-        this.saveCurrentGame();
+
+        if (this.input.isPressed(InputAction.Interact)) {
+          this.attuneSelection = 0;
+          this.currentScene = 'attune';
+          this.audio.playBloomstone();
+          return;
+        }
       }
     }
+
+    // 3. NPC Interactions (Hub & Roaming)
+    if (this.currentRegion.npcs) {
+      for (const npc of this.currentRegion.npcs) {
+        if (position.distanceTo(Vec2.of(npc.x, npc.y)) < 70) {
+          if (this.input.isPressed(InputAction.Interact)) {
+            if (npc.id === 'waking_choir') {
+              this.attuneSelection = 0;
+              this.currentScene = 'attune';
+              this.audio.playUISelect();
+            } else if (npc.id === 'old_coalspine') {
+              this.shopSelection = 0;
+              this.currentScene = 'shop';
+              this.audio.playUISelect();
+            } else if (npc.id === 'ferro') {
+              this.smithSelection = 0;
+              this.smithStatus = '';
+              this.currentScene = 'smithing';
+              this.audio.playUISelect();
+            } else if (npc.id === 'unburied_scribe') {
+              this.dialogueManager.startDialogue('scribe_intro');
+              this.currentScene = 'dialogue';
+              this.dialogueActionTimer = 0;
+              this.audio.playUISelect();
+            }
+            return;
+          }
+        }
+      }
+    }
+
+    // 4. Region exits & doors
     for (const connection of this.currentRegion.connections) {
       const target = ALL_REGIONS[connection.toRegion];
       if (target && position.distanceTo(Vec2.of(connection.x, connection.y)) < 55) {
@@ -787,6 +1082,61 @@ class Gravebloom {
         return;
       }
     }
+  }
+
+  private getActiveBossInfo(): { name: string; epithet: string; currentHP: number; maxHP: number } | undefined {
+    if (this.bossController) {
+      const health = getComponent<HealthComponent>((this.bossController as any).entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'Ser Ashgrave', epithet: 'The Herald Undone', currentHP: health.current, maxHP: health.max };
+      }
+    }
+    if (this.uniqueBossController) {
+      const health = getComponent<HealthComponent>(this.uniqueBossController.entity, 'health');
+      if (health && health.current > 0) {
+        const isCorvain = this.uniqueBossController.bossId === 'sir_corvain';
+        return {
+          name: isCorvain ? 'Sir Corvain' : 'The Bloomwarden',
+          epithet: isCorvain ? 'The Last Vigil' : 'The Rooted Queen',
+          currentHP: health.current,
+          maxHP: health.max,
+        };
+      }
+    }
+    if (this.cinderChoir && this.cinderChoir.sharedHealth > 0) {
+      return { name: 'The Cinder Choir', epithet: 'The Bound Sisters', currentHP: this.cinderChoir.sharedHealth, maxHP: 2400 };
+    }
+    if (this.rootMother) {
+      const health = getComponent<HealthComponent>(this.rootMother.entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'The Root Mother', epithet: 'The Buried Horror', currentHP: health.current, maxHP: health.max };
+      }
+    }
+    if (this.vaelith) {
+      const health = getComponent<HealthComponent>(this.vaelith.entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'Vaelith', epithet: 'Voice of the Hollow Bough', currentHP: health.current, maxHP: health.max };
+      }
+    }
+    if (this.frostWidow) {
+      const health = getComponent<HealthComponent>(this.frostWidow.entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'The Frost Widow', epithet: "The Widow's Crown", currentHP: health.current, maxHP: health.max };
+      }
+    }
+    if (this.hollowKing) {
+      const health = getComponent<HealthComponent>(this.hollowKing.entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'The Hollow King', epithet: 'Father of Ash', currentHP: health.current, maxHP: health.max };
+      }
+    }
+    if (this.unspokenTwin) {
+      const health = getComponent<HealthComponent>(this.unspokenTwin.entity, 'health');
+      if (health && health.current > 0) {
+        return { name: 'The Unspoken Twin', epithet: 'The Mirror That Remembers', currentHP: health.current, maxHP: health.max };
+      }
+    }
+    return undefined;
   }
 
   private transitionToRegion(regionId: string, spawn: Vec2 | null): void {
@@ -838,31 +1188,45 @@ class Gravebloom {
     const W = this.renderer.w;
     const H = this.renderer.h;
     ctx.fillStyle = Colors.BLACK; ctx.fillRect(0, 0, W, H);
+
+    const titleBg = this.assets.getImage('title_bg');
+    if (titleBg) {
+      ctx.save();
+      ctx.globalAlpha = 0.65;
+      ctx.drawImage(titleBg, 0, 0, W, H);
+      ctx.restore();
+    } else {
+      // Silhouette fallback
+      const sy = H * 0.6;
+      ctx.fillStyle = '#151210';
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let x = 0; x < W; x += 5) { ctx.lineTo(x, sy - (30 + Math.sin(x * 0.01) * 40 + Math.sin(x * 0.03) * 20)); }
+      ctx.lineTo(W, H); ctx.fill();
+    }
+
     this.renderer.drawVignette(0.7);
 
-    // Silhouette
-    const sy = H * 0.6;
-    ctx.fillStyle = '#151210';
-    ctx.beginPath(); ctx.moveTo(0, H);
-    for (let x = 0; x < W; x += 5) { ctx.lineTo(x, sy - (30 + Math.sin(x * 0.01) * 40 + Math.sin(x * 0.03) * 20)); }
-    ctx.lineTo(W, H); ctx.fill();
-
-    this.renderer.drawText('GRAVEBLOOM', W / 2, H * 0.28, {
+    this.renderer.drawText('GRAVEBLOOM', W / 2, H * 0.26, {
       color: Colors.BONE_WHITE, font: '36px "Courier New", monospace', align: 'center',
       shadow: { color: Colors.CRIMSON_GLOW, blur: 20, offsetX: 0, offsetY: 0 },
     });
-    this.renderer.drawText('A Requiem in Ash and Crimson', W / 2, H * 0.28 + 40, {
-      color: 'rgba(212,207,196,0.5)', font: '12px "Courier New", monospace', align: 'center',
+    this.renderer.drawText('A Requiem in Ash and Crimson', W / 2, H * 0.26 + 36, {
+      color: 'rgba(212,207,196,0.6)', font: '12px "Courier New", monospace', align: 'center',
     });
 
-    const items = ['Begin', 'Continue', 'Settings', 'Exit'];
-    const my = H * 0.55;
+    const items = ['Begin Anew', 'Continue Vigil', 'Settings', 'Controls & Credits'];
+    const my = H * 0.54;
     for (let i = 0; i < items.length; i++) {
-      const y = my + i * 24;
+      const y = my + i * 26;
       const sel = i === this.titleSelection;
-      if (sel) this.renderer.drawText('✦', W / 2 - 60, y, { color: Colors.CRIMSON_GLOW, font: '12px "Courier New", monospace', align: 'center', shadow: { color: Colors.CRIMSON_GLOW, blur: 6, offsetX: 0, offsetY: 0 } });
-      this.renderer.drawText(items[i], W / 2, y, { color: sel ? Colors.CRIMSON_GLOW : 'rgba(212,207,196,0.4)', font: `${sel ? 14 : 12}px "Courier New", monospace`, align: 'center', shadow: sel ? { color: Colors.CRIMSON, blur: 8, offsetX: 0, offsetY: 0 } : undefined });
+      if (sel) this.renderer.drawText('✦', W / 2 - 80, y, { color: Colors.CRIMSON_GLOW, font: '12px "Courier New", monospace', align: 'center', shadow: { color: Colors.CRIMSON_GLOW, blur: 6, offsetX: 0, offsetY: 0 } });
+      this.renderer.drawText(items[i], W / 2, y, { color: sel ? Colors.CRIMSON_GLOW : 'rgba(212,207,196,0.6)', font: `${sel ? 14 : 12}px "Courier New", monospace`, align: 'center', shadow: sel ? { color: Colors.CRIMSON, blur: 8, offsetX: 0, offsetY: 0 } : undefined });
     }
+
+    this.renderer.drawText('[CLICK / TAP] or [ENTER] to Select', W / 2, H - 25, {
+      color: 'rgba(212,207,196,0.3)', font: '9px "Courier New", monospace', align: 'center'
+    });
+
     this.particles.render(this.renderer);
     if (this.sceneTransitionTimer < 1) this.renderer.drawOverlay(`rgba(0,0,0,${1 - this.sceneTransitionTimer})`);
   }
@@ -913,34 +1277,63 @@ class Gravebloom {
     const H = this.renderer.h;
     ctx.fillStyle = Colors.BLACK; ctx.fillRect(0, 0, W, H);
     this.renderer.drawVignette(0.6);
-    this.renderer.drawText('Choose Your Origin', W / 2, 30, { color: Colors.BONE_WHITE, font: '18px "Courier New", monospace', align: 'center' });
+    this.renderer.drawText('Choose Your Origin', W / 2, 28, { color: Colors.BONE_WHITE, font: '18px "Courier New", monospace', align: 'center' });
 
+    // Origin list
     for (let i = 0; i < ORIGINS.length; i++) {
-      const o = ORIGINS[i]; const y = 70 + i * 30; const sel = i === this.originSelection;
-      if (sel) { ctx.fillStyle = 'rgba(139,26,26,0.1)'; ctx.fillRect(55, y - 3, 300, 26); this.renderer.drawText('✦', 58, y + 3, { color: Colors.CRIMSON_GLOW, font: '10px "Courier New", monospace' }); }
-      this.renderer.drawText(o.name, 72, y + 2, { color: sel ? Colors.CRIMSON_GLOW : Colors.BONE_WHITE, font: '12px "Courier New", monospace' });
-      this.renderer.drawText(o.description, 72, y + 16, { color: 'rgba(212,207,196,0.4)', font: '9px "Courier New", monospace' });
+      const o = ORIGINS[i]; const y = 60 + i * 28; const sel = i === this.originSelection;
+      if (sel) {
+        ctx.fillStyle = 'rgba(139,26,26,0.2)';
+        ctx.fillRect(45, y - 3, 300, 25);
+        this.renderer.drawText('✦', 50, y + 3, { color: Colors.CRIMSON_GLOW, font: '10px "Courier New", monospace' });
+      }
+      this.renderer.drawText(o.name, 65, y + 2, { color: sel ? Colors.CRIMSON_GLOW : Colors.BONE_WHITE, font: '12px "Courier New", monospace' });
+      this.renderer.drawText(o.description, 65, y + 14, { color: 'rgba(212,207,196,0.4)', font: '8px "Courier New", monospace' });
     }
 
     const sel = ORIGINS[this.originSelection];
     const dx = W - 250;
-    this.renderer.drawText('Starting Stats', dx, 70, { color: Colors.PALE_GOLD, font: '11px "Courier New", monospace' });
+
+    // Portrait concept art
+    const heroArt = this.assets.getImage('the_unspoken');
+    if (heroArt) {
+      ctx.save();
+      ctx.strokeStyle = Colors.CRIMSON_GLOW;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(dx + 30, 50, 110, 110);
+      ctx.drawImage(heroArt, dx + 30, 50, 110, 110);
+      ctx.restore();
+    }
+
+    const statsStartY = heroArt ? 170 : 65;
+    this.renderer.drawText('Starting Stats', dx, statsStartY, { color: Colors.PALE_GOLD, font: '11px "Courier New", monospace' });
     const statKeys = ['vigor', 'endurance', 'might', 'grace', 'resolve', 'ashAffinity'];
     const statLabels = ['Vigor', 'Endurance', 'Might', 'Grace', 'Resolve', 'Ash Affin.'];
     for (let i = 0; i < statKeys.length; i++) {
-      const val = sel.stats[statKeys[i]]; const y = 88 + i * 16;
+      const val = sel.stats[statKeys[i]]; const y = statsStartY + 16 + i * 15;
       this.renderer.drawText(statLabels[i], dx, y, { color: 'rgba(212,207,196,0.6)', font: '10px "Courier New", monospace' });
       ctx.fillStyle = 'rgba(139,26,26,0.2)'; ctx.fillRect(dx + 80, y, 80, 6);
       ctx.fillStyle = Colors.CRIMSON_DIM; ctx.fillRect(dx + 80, y, (val / 20) * 80, 6);
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.strokeRect(dx + 80, y, 80, 6);
       this.renderer.drawText(val.toString(), dx + 165, y - 1, { color: Colors.BONE_WHITE, font: '9px "Courier New", monospace' });
     }
+
     const weapon = WEAPONS[sel.startingWeapon];
     if (weapon) {
-      this.renderer.drawText(`Weapon: ${weapon.name}`, dx, 198, { color: Colors.PALE_GOLD, font: '10px "Courier New", monospace' });
-      this.renderer.drawText(weapon.description, dx, 213, { color: 'rgba(212,207,196,0.4)', font: '9px "Courier New", monospace', maxWidth: 200 });
+      const wy = statsStartY + 115;
+      this.renderer.drawText(`Weapon: ${weapon.name}`, dx, wy, { color: Colors.PALE_GOLD, font: '10px "Courier New", monospace' });
+      this.renderer.drawText(weapon.description, dx, wy + 14, { color: 'rgba(212,207,196,0.4)', font: '9px "Courier New", monospace', maxWidth: 200 });
     }
-    this.renderer.drawText('[ENTER] Confirm  [ESC] Back', W / 2, H - 25, { color: 'rgba(212,207,196,0.3)', font: '9px "Courier New", monospace', align: 'center' });
+
+    // Confirm button
+    ctx.fillStyle = 'rgba(139,26,26,0.25)';
+    ctx.fillRect(W / 2 - 100, H - 40, 200, 28);
+    ctx.strokeStyle = Colors.CRIMSON_GLOW;
+    ctx.strokeRect(W / 2 - 100, H - 40, 200, 28);
+    this.renderer.drawText('CONFIRM ORIGIN', W / 2, H - 28, {
+      color: Colors.CRIMSON_GLOW, font: '11px "Courier New", monospace', align: 'center'
+    });
+
     this.particles.render(this.renderer);
   }
 
@@ -953,6 +1346,25 @@ class Gravebloom {
     this.renderer.applyCameraTransform();
     this.renderTerrain();
     this.renderDecorations();
+
+    // Render Ashlight reclamation wisp
+    if (this.droppedAshPos && this.currentRegion && this.droppedAshPos.region === this.currentRegion.id && this.droppedAsh > 0) {
+      ctx.save();
+      const time = performance.now() / 1000;
+      const bob = Math.sin(time * 4) * 6;
+      ctx.fillStyle = 'rgba(230,57,70,0.85)';
+      ctx.shadowColor = Colors.CRIMSON_GLOW;
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.arc(this.droppedAshPos.x, this.droppedAshPos.y - 15 + bob, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = Colors.PALE_GOLD;
+      ctx.beginPath();
+      ctx.arc(this.droppedAshPos.x, this.droppedAshPos.y - 15 + bob, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
 
     for (const entity of this.allEntities) {
       if (!entity.active && getComponent<CombatStateComponent>(entity, 'combatState')?.state !== 'dead') continue;
@@ -973,12 +1385,19 @@ class Gravebloom {
       const stamina = getComponent<StaminaComponent>(this.player, 'stamina')!;
       const ember = getComponent<EmberComponent>(this.player, 'ember')!;
       const combat = getComponent<CombatStateComponent>(this.player, 'combatState')!;
+      const activeBoss = this.getActiveBossInfo();
       this.hudRenderer.render(this.renderer, {
         health, stamina, ember,
         ash: this.playerController.getState().ash,
         combat,
+        flaskCharges: this.playerController.getFlaskCharges(),
+        maxFlaskCharges: this.playerController.getMaxFlaskCharges(),
+        activeBoss,
       });
     }
+
+    // Mobile touch controls overlay
+    this.input.renderTouchControls(this.renderer.ctx, 0.85);
 
     // Map overlay
     if (this.mapSystem.getIsOpen()) this.mapSystem.render(this.renderer);

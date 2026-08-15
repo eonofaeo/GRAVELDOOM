@@ -37,6 +37,50 @@ export interface RegionDefinition {
   bossPosition: Vec2 | null;
 }
 
+// ─── Region 0: The Ashen Vigil (Hub) ─────────────────────────────
+
+export const ASHEN_VIGIL: RegionDefinition = {
+  id: 'ashenVigil',
+  name: 'The Ashen Vigil',
+  subtitle: 'The Waking Choir & Sanctuary',
+  bgColor1: '#0d090a',
+  bgColor2: '#1a1214',
+  accentColor: Colors.CRIMSON_GLOW,
+  hazardType: 'none',
+  tiles: generateAshenVigilTiles(),
+  enemies: [],
+  bloomstones: [
+    { id: 'ashenVigil_main', x: 200, y: 300 },
+  ],
+  npcs: [
+    { id: 'waking_choir', x: 350, y: 300 },
+    { id: 'old_coalspine', x: 550, y: 300 },
+    { id: 'ferro', x: 750, y: 300 },
+    { id: 'unburied_scribe', x: 950, y: 300 },
+  ],
+  connections: [
+    { toRegion: 'ashenCoast', x: 1200, y: 300 },
+  ],
+  bossId: null,
+  bossPosition: null,
+};
+
+function generateAshenVigilTiles(): RegionTile[] {
+  const tiles: RegionTile[] = [];
+  for (let x = 0; x < 1400; x += 64) {
+    tiles.push({ x, y: 300, type: 'ground' });
+    tiles.push({ x, y: 364, type: 'wall' });
+  }
+  // Ancient sanctuary arches
+  for (let x = 200; x <= 1000; x += 250) {
+    tiles.push({ x, y: 160, type: 'platform' });
+  }
+  tiles.push({ x: 200, y: 268, type: 'bloomstone' });
+  tiles.push({ x: 400, y: 280, type: 'decoration', variant: 0 });
+  tiles.push({ x: 800, y: 280, type: 'decoration', variant: 1 });
+  return tiles;
+}
+
 // ─── Region: The Ashen Coast ─────────────────────────────────────
 
 export const ASHEN_COAST: RegionDefinition = {
@@ -62,6 +106,7 @@ export const ASHEN_COAST: RegionDefinition = {
   ],
   npcs: [],
   connections: [
+    { toRegion: 'ashenVigil', x: 50, y: 300 },
     { toRegion: 'cindermoor', x: 1800, y: 300 },
     { toRegion: 'gravebloomMarsh', x: 1400, y: 350 },
   ],
@@ -467,6 +512,7 @@ function generateHollowThroneTiles(): RegionTile[] {
 // ─── All Regions ─────────────────────────────────────────────────
 
 export const ALL_REGIONS: Record<string, RegionDefinition> = {
+  ashenVigil: ASHEN_VIGIL,
   ashenCoast: ASHEN_COAST,
   cindermoor: CINDERMOOR,
   gravebloomMarsh: GRAVEBLOOM_MARSH,

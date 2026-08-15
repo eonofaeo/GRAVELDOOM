@@ -133,6 +133,9 @@ export class HUDRenderer {
     ember: EmberComponent;
     ash: number;
     combat: CombatStateComponent;
+    flaskCharges?: number;
+    maxFlaskCharges?: number;
+    activeBoss?: { name: string; epithet: string; currentHP: number; maxHP: number };
   }): void {
     const ctx = renderer.ctx;
     const W = renderer.w;
@@ -166,12 +169,54 @@ export class HUDRenderer {
       shadow: { color: 'rgba(196,168,74,0.3)', blur: 4, offsetX: 0, offsetY: 0 },
     });
 
-    // ─── Weapon indicator ─────────────────────────────────
-    const weaponY = H - 40;
-    renderer.drawText('[⚔]', W - 60, weaponY, {
-      color: Colors.BONE_WHITE,
-      font: '16px "Courier New", monospace',
+    // Crimson Flask Charges
+    const flaskCharges = (playerState as any).flaskCharges ?? 4;
+    const maxFlaskCharges = (playerState as any).maxFlaskCharges ?? 4;
+    ctx.fillStyle = 'rgba(230,57,70,0.15)';
+    ctx.fillRect(barX + barW + 20, 36, 90, 16);
+    ctx.strokeStyle = Colors.CRIMSON_GLOW;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX + barW + 20, 36, 90, 16);
+    renderer.drawText(`🧪 FLASK ${flaskCharges}/${maxFlaskCharges}`, barX + barW + 26, 39, {
+      color: flaskCharges > 0 ? Colors.CRIMSON_BRIGHT : 'rgba(212,207,196,0.4)',
+      font: '10px "Courier New", monospace',
     });
+
+    // ─── Weapon & Item indicators (Bottom Right) ──────────
+    const weaponY = H - 35;
+    const weaponX = W - 180;
+    const weaponName = (playerState as any).weaponName ?? 'Arming Sword';
+    ctx.fillStyle = 'rgba(10,10,10,0.6)';
+    ctx.fillRect(weaponX, weaponY - 20, 160, 45);
+    ctx.strokeStyle = 'rgba(212,207,196,0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(weaponX, weaponY - 20, 160, 45);
+    renderer.drawText(`⚔ ${weaponName}`, weaponX + 8, weaponY - 14, {
+      color: Colors.BONE_WHITE, font: '10px "Courier New", monospace',
+    });
+    renderer.drawText(`[J] Attack [K] Heavy [Q] Heal`, weaponX + 8, weaponY + 4, {
+      color: 'rgba(212,207,196,0.4)', font: '8px "Courier New", monospace',
+    });
+
+    // ─── Active Boss Health Bar (Top Center) ──────────────
+    const activeBoss = (playerState as any).activeBoss as { name: string; epithet: string; currentHP: number; maxHP: number } | undefined;
+    if (activeBoss && activeBoss.currentHP > 0) {
+      const bossBarW = Math.min(480, W * 0.7);
+      const bossBarX = (W - bossBarW) / 2;
+      const bossBarY = 40;
+      renderer.drawText(`${activeBoss.name.toUpperCase()} — ${activeBoss.epithet}`, W / 2, bossBarY - 14, {
+        color: Colors.BONE_WHITE, font: '11px "Courier New", monospace', align: 'center',
+        shadow: { color: Colors.CRIMSON_GLOW, blur: 6, offsetX: 0, offsetY: 0 },
+      });
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(bossBarX, bossBarY, bossBarW, 10);
+      const bossFill = Math.max(0, (activeBoss.currentHP / activeBoss.maxHP) * bossBarW);
+      ctx.fillStyle = Colors.CRIMSON;
+      ctx.fillRect(bossBarX, bossBarY, bossFill, 10);
+      ctx.strokeStyle = Colors.PALE_GOLD;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bossBarX, bossBarY, bossBarW, 10);
+    }
 
     // ─── Stamina exhaustion warning ───────────────────────
     if (playerState.stamina.isExhausted) {
@@ -198,11 +243,6 @@ export class HUDRenderer {
       ctx.fillStyle = `rgba(139,26,26,${alpha})`;
       ctx.fillRect(0, 0, W, H);
     }
-
-    // ─── FPS counter (debug) ──────────────────────────────
-    // renderer.drawText(`FPS: ${loop.fps}`, W - 60, H - 15, {
-    //   color: 'rgba(255,255,255,0.3)', font: '10px monospace',
-    // });
   }
 
   private drawResourceBar(

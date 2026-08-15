@@ -99,6 +99,11 @@ export const ORIGINS: OriginData[] = [
     stats: { vigor: 8, endurance: 10, might: 6, grace: 14, resolve: 6, ashAffinity: 10 },
   },
   {
+    id: 'beastcaller', name: 'Beastcaller', description: 'Summoner (spectral ash-wolf)',
+    startingWeapon: 'spear',
+    stats: { vigor: 10, endurance: 8, might: 8, grace: 8, resolve: 12, ashAffinity: 12 },
+  },
+  {
     id: 'hollow', name: 'The Hollow', description: 'Nothing but a torch',
     startingWeapon: 'fists',
     stats: { vigor: 10, endurance: 10, might: 10, grace: 10, resolve: 10, ashAffinity: 10 },

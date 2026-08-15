@@ -69,9 +69,16 @@ export class PlayerController {
     };
   }
 
+  private flaskCharges = 4;
+  private maxFlaskCharges = 4;
+
   getState(): PlayerState { return this.state; }
   addAsh(amount: number): void { this.state.ash += amount; }
   setAsh(amount: number): void { this.state.ash = Math.max(0, Math.floor(amount)); }
+
+  public getFlaskCharges(): number { return this.flaskCharges; }
+  public getMaxFlaskCharges(): number { return this.maxFlaskCharges; }
+  public refillFlask(): void { this.flaskCharges = this.maxFlaskCharges; }
 
   /** Change the equipped weapon */
   setWeapon(weaponId: string): void {
@@ -134,6 +141,19 @@ export class PlayerController {
       if (move.x !== 0) {
         transform.facing = move.x > 0 ? 1 : -1;
         sprite.flipX = transform.facing < 0;
+      }
+    }
+
+    // ─── Crimson Flask / Use Item (Healing) ───────────────
+    if (combat.canAct && this.input.isPressed(InputAction.UseItem)) {
+      if (this.flaskCharges > 0 && health.current < health.max) {
+        this.flaskCharges--;
+        const healAmount = Math.round(health.max * 0.45);
+        health.current = Math.min(health.max, health.current + healAmount);
+        this.audio.playHeal();
+        this.particles.emit(ParticlePresets.parrySpark(transform.position.add(Vec2.of(0, -20))));
+        sprite.flashTimer = 0.3;
+        sprite.flashColor = '#e63946';
       }
     }
 

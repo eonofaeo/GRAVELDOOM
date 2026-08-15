@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GRAVEBLOOM — Master Canonical Game Design & Build Specification",
+  "version": "2.0.0",
+  "lastUpdated": "2026-08-15",
+  "project": {
+    "title": "GRAVEBLOOM",
+    "subtitle": "A Requiem in Ash and Crimson",
+    "genre": "2D Dark Fantasy Action-RPG / Soulslike",
+    "targetPlatforms": ["PC (Web / Electron / Native)", "Mobile (iOS / Android WebApp & Touch)"],
+    "engine": "Custom TypeScript Canvas 2D Engine with Web Audio Synthesizer",
+    "resolution": {
+      "internalWidth": 960,
+      "internalHeight": 540,
+      "aspectRatio": "16:9",
+      "scaling": "Pixel-crisp responsive canvas letterboxing with touch coordinate transform"
+    }
+  },
+  "creativePillars": [
+    {
+      "id": "somber_atmosphere",
+      "name": "Somber & Weighty Dark Fantasy Atmosphere",
+      "description": "A world of fading ash, creeping crimson corruption, petrified colossi, and bone-white remnants. Every swing, parry, and death feels intentional and heavy."
+    },
+    {
+      "id": "deliberate_combat",
+      "name": "Deliberate Stamina & I-Frame Combat",
+      "description": "Combat rewards observation and timing. Light/Heavy attacks, directional rolls with 0.25s i-frames, tight parry windows, and weapon-specific Ember Arts."
+    },
+    {
+      "id": "tactile_restoration",
+      "name": "Crimson Flask & Ash Reclamation Loop",
+      "description": "Flask charges heal 40% max HP, refilling at Bloomstones. On death, lost Ash drops as a glowing Ashlight wisp at the death site to be reclaimed on the next run."
+    },
+    {
+      "id": "cross_platform_parity",
+      "name": "Seamless PC & Mobile Parity",
+      "description": "Full keyboard & mouse support with custom UI pointer clicks, direct gamepad polling, and an adaptive multi-touch virtual analog stick + action button HUD."
+    },
+    {
+      "id": "deep_progression",
+      "name": "Attunement & Cindersmithing Progression",
+      "description": "Level up 6 core attributes at Bloomstones or the Waking Choir. Forge and upgrade weapons up to +10 using raw ashen ore, cindersteel, and marshstone."
+    }
+  ],
+  "origins": [
+    {
+      "id": "wanderer",
+      "name": "The Wanderer",
+      "description": "A cloaked exile from the withered steppes. Balanced in combat with high adaptability.",
+      "startingWeapon": "arming_sword",
+      "stats": { "vigor": 11, "endurance": 11, "might": 11, "grace": 11, "resolve": 10, "ashAffinity": 10 },
+      "difficulty": "Standard",
+      "playstyle": "Balanced swordplay and versatile roll timing"
+    },
+    {
+      "id": "knight_errant",
+      "name": "Knight-Errant",
+      "description": "An armored crusader of a fallen order. High physical defense, heavy poise, and brutal poise damage.",
+      "startingWeapon": "greatsword",
+      "stats": { "vigor": 14, "endurance": 12, "might": 15, "grace": 8, "resolve": 9, "ashAffinity": 6 },
+      "difficulty": "Beginner Friendly",
+      "playstyle": "High poise, sweeping strikes, heavy defense"
+    },
+    {
+      "id": "ashborn_cleric",
+      "name": "Ashborn Cleric",
+      "description": "A zealot who speaks the sacred ash-chants. High healing affinity and sustained resolve.",
+      "startingWeapon": "mace",
+      "stats": { "vigor": 12, "endurance": 10, "might": 11, "grace": 8, "resolve": 15, "ashAffinity": 10 },
+      "difficulty": "Intermediate",
+      "playstyle": "Healing incantations, poise breaks, blunt impact"
+    },
+    {
+      "id": "duelist",
+      "name": "The Duelist",
+      "description": "A swift fencer clad in worn leather. Excels at rapid thrusts, bleed buildup, and pinpoint parries.",
+      "startingWeapon": "rapier",
+      "stats": { "vigor": 9, "endurance": 14, "might": 8, "grace": 16, "resolve": 10, "ashAffinity": 9 },
+      "difficulty": "Expert",
+      "playstyle": "Agile rolls, fast strikes, high critical parry ripostes"
+    },
+    {
+      "id": "hexweaver",
+      "name": "Hexweaver",
+      "description": "A renegade occultist who binds eldritch embers to consume foes from afar.",
+      "startingWeapon": "hex_catalyst",
+      "stats": { "vigor": 8, "endurance": 9, "might": 7, "grace": 10, "resolve": 12, "ashAffinity": 16 },
+      "difficulty": "Advanced",
+      "playstyle": "Ranged spellcasting, crimson tethering, debuffs"
+    },
+    {
+      "id": "grave_digger",
+      "name": "Grave-Digger",
+      "description": "A hardened laborer unearthing the sepulchers of forgotten gods. High poise and heavy cleaves.",
+      "startingWeapon": "warpick",
+      "stats": { "vigor": 13, "endurance": 13, "might": 14, "grace": 9, "resolve": 11, "ashAffinity": 6 },
+      "difficulty": "Standard",
+      "playstyle": "Armor piercing, staggered foes, sustained stamina"
+    },
+    {
+      "id": "beastcaller",
+      "name": "Beastcaller",
+      "description": "A feral tracker who channels the spirits of the marsh beasts to enhance speed and strike potency.",
+      "startingWeapon": "curved_sword",
+      "stats": { "vigor": 11, "endurance": 13, "might": 12, "grace": 13, "resolve": 8, "ashAffinity": 9 },
+      "difficulty": "Intermediate",
+      "playstyle": "Relentless multi-hit flurry, evasive sprints"
+    },
+    {
+      "id": "the_hollow",
+      "name": "The Hollow",
+      "description": "A stripped, nameless vessel possessing nothing but raw potential.",
+      "startingWeapon": "club",
+      "stats": { "vigor": 10, "endurance": 10, "might": 10, "grace": 10, "resolve": 10, "ashAffinity": 10 },
+      "difficulty": "Deprived / Hardcore",
+      "playstyle": "Ultimate customization and challenging early game"
+    }
+  ],
+  "regions": [
+    {
+      "id": "ashenVigil",
+      "name": "Ashen Vigil (Hub)",
+      "tier": 0,
+      "lore": "A sanctuary built around the Grand Bloomstone where survivors gather to kindle hope against the Hush.",
+      "npcs": ["The Waking Choir (Attunement)", "Old Coalspine (Materials Merchant)", "Ferro (Cindersmith)", "The Unburied Scribe (Lore & Secrets)"],
+      "connections": ["ashenCoast"]
+    },
+    {
+      "id": "ashenCoast",
+      "name": "The Ashen Coast",
+      "tier": 1,
+      "lore": "A grey shore where black sand meets petrified tidepools. The starting gate of the pilgrimage.",
+      "boss": "Ser Ashgrave, the Herald Undone",
+      "connections": ["ashenVigil", "cindermoor"]
+    },
+    {
+      "id": "cindermoor",
+      "name": "Cindermoor",
+      "tier": 2,
+      "lore": "Rolling hills of smoldering turf and charred watchtowers. Patrolled by Ashen Sentinels.",
+      "boss": "Sir Corvain, the Last Vigil",
+      "connections": ["ashenCoast", "gravebloomMarsh", "emberWaste"]
+    },
+    {
+      "id": "gravebloomMarsh",
+      "name": "The Gravebloom Marsh",
+      "tier": 3,
+      "lore": "A suffocating swamp where bloated roots feed on decaying embers. Poisonous spores linger.",
+      "boss": "The Bloomwarden",
+      "connections": ["cindermoor", "rootdeep"]
+    },
+    {
+      "id": "emberWaste",
+      "name": "The Ember Waste",
+      "tier": 4,
+      "lore": "A scorched expanse of cracked basalt and geysers of white-hot slag.",
+      "boss": "The Cinder Choir",
+      "connections": ["cindermoor", "silentCathedral"]
+    },
+    {
+      "id": "silentCathedral",
+      "name": "The Silent Cathedral",
+      "tier": 5,
+      "lore": "A towering gothic temple of obsidian stone where the silence itself crushes resolve.",
+      "boss": "Vaelith, Voice of the Hollow Bough",
+      "connections": ["emberWaste", "frostspire"]
+    },
+    {
+      "id": "rootdeep",
+      "name": "Rootdeep",
+      "tier": 6,
+      "lore": "The labyrinthine undergrowth beneath the world's surface. Chittering terrors crawl within.",
+      "boss": "The Root Mother",
+      "connections": ["gravebloomMarsh", "hollowBough"]
+    },
+    {
+      "id": "frostspire",
+      "name": "Frostspire Reach",
+      "tier": 7,
+      "lore": "Freezing pinnacles where ash is frozen into razor-sharp icicles.",
+      "boss": "The Frost Widow",
+      "connections": ["silentCathedral", "hollowThrone"]
+    },
+    {
+      "id": "hollowBough",
+      "name": "The Hollow Bough",
+      "tier": 8,
+      "lore": "The colossal petrified canopy overlooking the abyss.",
+      "boss": "The Hollow King (Pre-Throne Form)",
+      "connections": ["rootdeep", "hollowThrone"]
+    },
+    {
+      "id": "hollowThrone",
+      "name": "The Hollow Throne & The Mirror Void",
+      "tier": 9,
+      "lore": "The heart of the silence where the Father of Ash awaits, and the mirror reflects the Unspoken Twin.",
+      "boss": "The Hollow King / The Unspoken Twin",
+      "connections": ["hollowBough", "frostspire"]
+    }
+  ],
+  "majorBosses": [
+    {
+      "id": "ser_ashgrave",
+      "name": "Ser Ashgrave",
+      "epithet": "The Herald Undone",
+      "region": "ashenCoast",
+      "phase1": "Measured halberd thrusts, shield bashes, and heavy sweeps.",
+      "phase2": "Crimson burst: ignited polearm, sweeping shockwaves, and leap slams."
+    },
+    {
+      "id": "sir_corvain",
+      "name": "Sir Corvain",
+      "epithet": "The Last Vigil",
+      "region": "cindermoor",
+      "phase1": "Noble greatsword stance, graceful parries, and thrust lunges.",
+      "phase2": "Dual-wielding broken cindersword, relentless whirlwind combos."
+    },
+    {
+      "id": "bloomwarden",
+      "name": "The Bloomwarden",
+      "epithet": "The Rooted Queen",
+      "region": "gravebloomMarsh",
+      "phase1": "Root whips, poison spore blooms, and ground spikes.",
+      "phase2": "Enraged blooming vines, arena-wide spore fog, and burrow strikes."
+    },
+    {
+      "id": "cinder_choir",
+      "name": "The Cinder Choir",
+      "epithet": "The Bound Sisters",
+      "region": "emberWaste",
+      "phase1": "Three chanting sisters linked by a molten ribbon with synchronized fire bolts.",
+      "phase2": "Ascended choir: rotating flame pillars and area-wide ember storms."
+    },
+    {
+      "id": "root_mother",
+      "name": "The Root Mother",
+      "epithet": "The Buried Horror",
+      "region": "rootdeep",
+      "phase1": "Multi-limb subterranean sweeps, creeping larvae summons.",
+      "phase2": "Frenzied thrashing with overhead venom showers."
+    },
+    {
+      "id": "vaelith",
+      "name": "Vaelith",
+      "epithet": "Voice of the Hollow Bough",
+      "region": "silentCathedral",
+      "phase1": "Acoustic hexes, sound shockwaves, and silent teleports.",
+      "phase2": "Resonant shattering shriek, homing sonic needles."
+    },
+    {
+      "id": "frost_widow",
+      "name": "The Frost Widow",
+      "epithet": "The Widow's Crown",
+      "region": "frostspire",
+      "phase1": "Razor silk tethers, icicle rain, and ceiling drops.",
+      "phase2": "Frost armor, web frenzy, and freezing blizzard breath."
+    },
+    {
+      "id": "hollow_king",
+      "name": "The Hollow King",
+      "epithet": "Father of Ash",
+      "region": "hollowThrone",
+      "phase1": "Colossal greatsword strikes, molten stomp shockwaves, and ember cleaves.",
+      "phase2": "Unleashed Ash Storm, dual-handed cataclysm, and crimson corona."
+    },
+    {
+      "id": "unspoken_twin",
+      "name": "The Unspoken Twin",
+      "epithet": "The Mirror That Remembers",
+      "region": "hollowThrone",
+      "phase1": "Mirrors the player's exact equipment, movement, and timing.",
+      "phase2": "Spectral afterimages, counter-parry ripostes, and void ember bursts."
+    }
+  ],
+  "controlsAndInput": {
+    "pcKeyboardMouse": {
+      "movement": "WASD or Arrow Keys",
+      "lightAttack": "Left Mouse Click or J",
+      "heavyAttack": "K or Hold Click",
+      "roll": "Space or L (0.25s i-frames)",
+      "parry": "Shift or U (0.15s window)",
+      "emberArt": "Q or I (Consumes Ember)",
+      "flaskHeal": "R (Restores 40% HP)",
+      "interact": "E or Enter (Bloomstones, NPCs, Menus)",
+      "map": "M or Tab",
+      "pause": "Escape"
+    },
+    "mobileTouch": {
+      "virtualJoystick": "Dynamic Left-Side Analog Touch with 45px deadzone and directional smoothing",
+      "actionButtons": [
+        { "name": "LGT", "label": "Light Attack", "color": "#e63946" },
+        { "name": "HVY", "label": "Heavy Attack", "color": "#c4a84a" },
+        { "name": "ROL", "label": "Dodge Roll", "color": "#4ecdc4" },
+        { "name": "PAR", "label": "Parry", "color": "#9b5de5" },
+        { "name": "ART", "label": "Ember Art", "color": "#f15bb5" },
+        { "name": "FLK", "label": "Heal Flask", "color": "#ff0054" },
+        { "name": "INT", "label": "Interact", "color": "#00f5d4" }
+      ],
+      "topButtons": [
+        { "name": "MAP", "label": "World Map" },
+        { "name": "PAU", "label": "Pause" }
+      ]
+    },
+    "gamepad": {
+      "movement": "Left Analog Stick or D-Pad",
+      "lightAttack": "X / Square",
+      "heavyAttack": "Y / Triangle",
+      "roll": "A / Cross",
+      "parry": "B / Circle",
+      "emberArt": "Right Bumper (RB / R1)",
+      "flaskHeal": "Left Bumper (LB / L1)",
+      "interact": "A / Cross (at prompt)",
+      "map": "Back / Select",
+      "pause": "Start"
+    }
+  },
+  "assetRegistry": {
+    "2DVisualAssets": [
+      { "id": "title_bg", "file": "/assets/title_bg.jpg", "description": "Atmospheric skyline of Cindermoor with glowing embers and ruins" },
+      { "id": "the_unspoken", "file": "/assets/the_unspoken.jpg", "description": "Hero concept art with ragged cowl and glowing crimson ember eye" },
+      { "id": "ser_ashgrave", "file": "/assets/ser_ashgrave.jpg", "description": "Ser Ashgrave in tarnished ashen plate wielding a glowing spear" },
+      { "id": "sir_corvain", "file": "/assets/sir_corvain.jpg", "description": "Sir Corvain, the Last Vigil in intricate silver-inlaid armor" },
+      { "id": "the_bloomwarden", "file": "/assets/the_bloomwarden.jpg", "description": "The Bloomwarden entwined with thorny roots and bioluminescent flora" },
+      { "id": "hollow_king", "file": "/assets/hollow_king.jpg", "description": "The Hollow King, Father of Ash seated upon his petrified throne" },
+      { "id": "crimson_flask", "file": "/assets/crimson_flask.jpg", "description": "Gravebloom Crimson Flask icon filled with incandescent healing essence" }
+    ]
+  }
+}
