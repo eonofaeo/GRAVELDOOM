@@ -1,3 +1,5 @@
+import { inject } from '@vercel/analytics';
+
 import { Vec2, AABB, MathUtils } from './engine/math.js';
 import { InputManager, InputAction } from './engine/input.js';
 import { GameLoop } from './engine/loop.js';
@@ -553,7 +555,7 @@ class Gravebloom {
     this.musicSystem.setRegion('exploration');
   }
 
-  // ─── Paused ───────────────────────────────────────────────
+  // ─── Paused ─────────────────────────────────��─────────────
 
   private updatePaused(dt: number): void {
     if (this.input.isPressed(InputAction.Pause)) { this.currentScene = 'gameplay'; this.sceneTransitionTimer = 0; }
@@ -1354,9 +1356,9 @@ class Gravebloom {
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════���═══════════════
   // GAME MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════���═════════════���════════
 
   private loadGameplay(): void {
     if (!this.currentSave) return;
@@ -1548,5 +1550,7 @@ class Gravebloom {
 }
 
 // ─── Bootstrap ───────────────────────────────────────────────────
+inject();
+
 const game = new Gravebloom();
 game.start();
